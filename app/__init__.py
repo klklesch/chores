@@ -270,6 +270,8 @@ def _seed_defaults():
         db.session.add(AppSettings(key='notify_email_enabled', value='off'))
     if not AppSettings.query.get('app_base_url'):
         db.session.add(AppSettings(key='app_base_url', value=''))
+    if not AppSettings.query.get('book_default_loan_days'):
+        db.session.add(AppSettings(key='book_default_loan_days', value='28'))
 
     if Chore.query.count() == 0:
         defaults = [
@@ -291,5 +293,15 @@ def _seed_defaults():
         ]
         for name, desc, value in defaults:
             db.session.add(Chore(name=name, description=desc, default_value=value))
+
+    # Ensure "Read a Book" chore exists (shared template for book completions)
+    if not Chore.query.filter_by(name='Read a Book').first():
+        db.session.add(Chore(
+            name='Read a Book',
+            description='Finish a library book',
+            icon='📚',
+            default_value=0.0,
+            is_active=False,
+        ))
 
     db.session.commit()

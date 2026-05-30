@@ -26,6 +26,18 @@
                {% if request.endpoint == 'parent.payouts' %}bg-indigo-100 text-indigo-700{% else %}text-gray-500 hover:bg-gray-100{% endif %}">
             Payouts
           </a>
+          <a href="{{ url_for('parent.books_dashboard') }}"
+             class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
+               {% if request.endpoint in ('parent.books_dashboard', 'parent.books_history', 'parent.review_checkout') %}bg-indigo-100 text-indigo-700{% else %}text-gray-500 hover:bg-gray-100{% endif %}">
+            Books
+          </a>
+          {% if nav_children %}
+          <a href="{{ url_for('parent.child_history', child_id=(request.view_args.get('child_id') or nav_children[0].id)) }}"
+             class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
+               {% if request.endpoint == 'parent.child_history' %}bg-indigo-100 text-indigo-700{% else %}text-gray-500 hover:bg-gray-100{% endif %}">
+            History
+          </a>
+          {% endif %}
           <a href="{{ url_for('parent.settings') }}"
              class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
                {% if request.endpoint == 'parent.settings' %}bg-indigo-100 text-indigo-700{% else %}text-gray-500 hover:bg-gray-100{% endif %}">
@@ -55,6 +67,18 @@
            {% if request.endpoint == 'parent.payouts' %}bg-indigo-100 text-indigo-700{% else %}text-gray-500{% endif %}">
         Payouts
       </a>
+      <a href="{{ url_for('parent.books_dashboard') }}"
+         class="flex-1 text-center px-2 py-1.5 rounded-lg text-xs font-medium transition-colors
+           {% if request.endpoint in ('parent.books_dashboard', 'parent.books_history', 'parent.review_checkout') %}bg-indigo-100 text-indigo-700{% else %}text-gray-500{% endif %}">
+        Books
+      </a>
+      {% if nav_children %}
+      <a href="{{ url_for('parent.child_history', child_id=(request.view_args.get('child_id') or nav_children[0].id)) }}"
+         class="flex-1 text-center px-2 py-1.5 rounded-lg text-xs font-medium transition-colors
+           {% if request.endpoint == 'parent.child_history' %}bg-indigo-100 text-indigo-700{% else %}text-gray-500{% endif %}">
+        History
+      </a>
+      {% endif %}
       <a href="{{ url_for('parent.settings') }}"
          class="flex-1 text-center px-2 py-1.5 rounded-lg text-xs font-medium transition-colors
            {% if request.endpoint == 'parent.settings' %}bg-indigo-100 text-indigo-700{% else %}text-gray-500{% endif %}">
@@ -71,7 +95,7 @@
     <div class="max-w-5xl mx-auto px-4 py-2 flex items-center gap-3 overflow-x-auto scrollbar-none">
       {% for child in nav_children %}
       {% set is_active = active_child_id == child.id %}
-      <a href="{{ url_for('parent.child_detail', child_id=child.id) }}"
+      <a href="{{ url_for('parent.child_history', child_id=child.id) if request.endpoint == 'parent.child_history' else url_for('parent.child_detail', child_id=child.id) }}"
          class="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-semibold transition-colors shrink-0
                 {{ 'bg-indigo-100 text-indigo-700' if is_active else 'text-gray-500 hover:bg-gray-100' }}">
         {{ avatar(child, 'w-6 h-6', 'text-xs') }}

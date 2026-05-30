@@ -1,0 +1,32 @@
+{% if error %}
+<div class="border border-red-100 rounded-xl bg-white overflow-hidden">
+  <p class="text-sm text-red-500 px-3 py-2">{{ error }}</p>
+</div>
+{% elif not results %}
+<div class="border border-gray-100 rounded-xl bg-white overflow-hidden">
+  <p class="text-sm text-gray-400 px-3 py-3 text-center">No results found.</p>
+</div>
+{% else %}
+<div class="border border-indigo-100 rounded-xl bg-white overflow-hidden divide-y divide-gray-50">
+  {% for item in results %}
+  <button type="button"
+          class="result-item flex items-center gap-3 w-full text-left px-3 py-2.5 hover:bg-indigo-50 transition-colors border-l-4 border-l-transparent"
+          data-title="{{ item.title | e }}"
+          data-author="{{ item.author | e }}"
+          data-isbn="{{ item.isbn | e }}"
+          data-cover="{{ item.cover | e }}">
+    {% if item.cover %}
+    <img src="{{ item.cover }}" class="w-8 h-11 object-cover rounded shrink-0" alt="" onerror="this.style.display='none'">
+    {% else %}
+    <div class="w-8 h-11 bg-gray-100 rounded shrink-0 flex items-center justify-center text-gray-300 text-base">📚</div>
+    {% endif %}
+    <div class="min-w-0">
+      <div class="font-semibold text-sm text-gray-800 line-clamp-1">{{ item.title }}</div>
+      <div class="text-xs text-gray-400 truncate">
+        {{ item.author }}{% if item.author and item.isbn %} · {% endif %}{% if item.isbn %}{{ item.isbn }}{% endif %}
+      </div>
+    </div>
+  </button>
+  {% endfor %}
+</div>
+{% endif %}

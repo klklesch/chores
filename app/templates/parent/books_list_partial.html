@@ -1,0 +1,146 @@
+{# HTMX partial — no extends, no block. Swapped into #book-list innerHTML. #}
+{% from '_macros.html' import avatar %}
+
+{% for co in checkouts %}
+<details class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+  <summary class="flex items-center gap-3 px-4 py-3 cursor-pointer list-none select-none">
+
+    <!-- Selection checkbox (Alpine x-model works across HTMX swaps as long as
+         the outer x-data div wraps #book-list) -->
+    <input type="checkbox" :value="{{ co.id }}" x-model="selectedIds"
+           @click.stop
+           class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-300 shrink-0">
+
+    <!-- Cover thumbnail -->
+    <img src="/parent/books/{{ co.book.id }}/cover.svg"
+         width="40" height="56"
+         class="rounded object-cover shrink-0 bg-gray-100"
+         alt="{{ co.book.title }}">
+
+    <!-- Title + author -->
+    <div class="flex-1 min-w-0">
+      <div class="font-semibold text-gray-800 truncate">{{ co.book.title }}</div>
+      {% if co.book.author %}
+      <div class="text-sm text-gray-400 truncate">{{ co.book.author }}</div>
+      {% endif %}
+    </div>
+
+    <!-- Due date chip -->
+    {% if co.due_date %}
+      {% if co.is_overdue %}
+      <span class="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full font-semibold shrink-0">Overdue</span>
+      {% elif co.days_until_due is not none and co.days_until_due <= 3 %}
+      <span class="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-semibold shrink-0">Due {{ co.due_date.strftime('%b') }} {{ co.due_date.day }}</span>
+      {% else %}
+      <span class="bg-gray-100 text-gray-500 text-xs px-2 py-0.5 rounded-full font-semibold shrink-0">Due {{ co.due_date.strftime('%b') }} {{ co.due_date.day }}</span>
+      {% endif %}
+    {% endif %}
+
+    <!-- Assignment status chips (initials) -->
+    <div class="flex items-center gap-1 shrink-0">
+      {% if co.assignments %}
+        {% for a in co.assignments %}
+          {% if a.status == 'reading' %}
+          <span class="bg-blue-100 text-blue-700 text-xs w-5 h-5 flex items-center justify-center rounded-full font-bold" title="{{ a.child.name }}: reading">{{ a.child.name[0].upper() }}</span>
+          {% elif a.status == 'finished' %}
+          <span class="bg-green-100 text-green-700 text-xs w-5 h-5 flex items-center justify-center rounded-full font-bold" title="{{ a.child.name }}: finished">{{ a.child.name[0].upper() }}</span>
+          {% elif a.status == 'unfinished' %}
+          <span class="bg-red-100 text-red-600 text-xs w-5 h-5 flex items-center justify-center rounded-full font-bold" title="{{ a.child.name }}: unfinished">{{ a.child.name[0].upper() }}</span>
+          {% else %}
+          <span class="bg-gray-100 text-gray-500 text-xs w-5 h-5 flex items-center justify-center rounded-full font-bold" title="{{ a.child.name }}: unread">{{ a.child.name[0].upper() }}</span>
+          {% endif %}
+        {% endfor %}
+      {% else %}
+      <span class="text-xs text-gray-300 italic hidden sm:inline">No one assigned</span>
+      {% endif %}
+    </div>
+
+    <!-- Mark returned button -->
+    <form method="POST" action="{{ url_for('parent.return_checkout', checkout_id=co.id) }}"
+          @click.stop @submit.stop>
+      <button type="submit"
+              class="bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold px-3 py-1.5 rounded-xl text-sm transition-colors shrink-0">
+        Return
+      </button>
+    </form>
+
+    <!-- Expand chevron -->
+    <svg class="w-4 h-4 text-gray-400 shrink-0 transition-transform details-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+    </svg>
+  </summary>
+
+  <!-- Expanded: per-child assignment rows -->
+  <div class="px-4 pb-4 pt-2 border-t border-gray-100">
+    {% if co.assignments %}
+    <div class="space-y-3">
+      {% for a in co.assignments %}
+      <div class="flex flex-wrap items-center gap-3">
+
+        <!-- Child avatar + name -->
+        <div class="flex items-center gap-2 min-w-[8rem] shrink-0">
+          {{ avatar(a.child, 'w-8 h-8', 'text-sm') }}
+          <span class="text-sm font-semibold text-gray-700">{{ a.child.name }}</span>
+        </div>
+
+        <!-- Status badge -->
+        {% if a.status == 'reading' %}
+        <span class="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full font-semibold">Reading</span>
+        {% elif a.status == 'finished' %}
+        <span class="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-semibold">Finished</span>
+        {% elif a.status == 'unfinished' %}
+        <span class="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full font-semibold">Unfinished</span>
+        {% else %}
+        <span class="bg-gray-100 text-gray-500 text-xs px-2 py-0.5 rounded-full font-semibold">Unread</span>
+        {% endif %}
+
+        <!-- Reward inline HTMX edit -->
+        <span hx-target="this" hx-swap="outerHTML">
+          <form hx-post="{{ url_for('parent.edit_assignment_reward', assignment_id=a.id) }}"
+                hx-target="this" hx-swap="outerHTML"
+                class="flex items-center gap-1">
+            <span class="text-gray-400 text-sm">$</span>
+            <input type="number" name="reward" step="0.01" min="0"
+                   value="{{ '%.2f'|format(a.reward_value) }}"
+                   class="w-20 border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+            <button type="submit"
+                    class="text-xs text-indigo-600 font-semibold hover:text-indigo-800 transition-colors">
+              Save
+            </button>
+          </form>
+        </span>
+
+        <!-- Status action buttons -->
+        {% if a.status in ('reading', 'finished') %}
+        <form method="POST" action="{{ url_for('parent.set_assignment_status', assignment_id=a.id) }}">
+          <input type="hidden" name="status" value="unfinished">
+          <button type="submit"
+                  class="bg-red-500 hover:bg-red-600 text-white font-semibold px-3 py-1.5 rounded-xl text-sm transition-colors">
+            Set Unfinished
+          </button>
+        </form>
+        {% endif %}
+        {% if a.status == 'unread' %}
+        <form method="POST" action="{{ url_for('parent.set_assignment_status', assignment_id=a.id) }}">
+          <input type="hidden" name="status" value="reading">
+          <button type="submit"
+                  class="bg-blue-100 hover:bg-blue-200 text-blue-700 font-semibold px-3 py-1.5 rounded-xl text-sm transition-colors">
+            Set Reading
+          </button>
+        </form>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-sm text-gray-400 italic py-2">No children assigned to this checkout.</p>
+    {% endif %}
+
+    <p class="text-xs text-gray-300 mt-3 pt-2 border-t border-gray-50">
+      Checked out {{ co.checked_out_date.strftime('%b') }} {{ co.checked_out_date.day }}, {{ co.checked_out_date.year }}
+    </p>
+  </div>
+</details>
+{% else %}
+<p class="text-center text-gray-400 py-8">No books match your search.</p>
+{% endfor %}

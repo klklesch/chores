@@ -145,7 +145,6 @@ def get_payout_period_info() -> dict:
     elif cadence == 'daily':
         period_start   = datetime.combine(today, datetime.min.time())
         period_label   = f"Today, {_fmt_date(today)}"
-        tomorrow       = today + timedelta(days=1)
         next_payout    = f"Tomorrow at {_fmt_time(payout_hour, payout_minute)}"
 
     elif cadence == 'weekly':
@@ -183,3 +182,15 @@ def get_payout_period_info() -> dict:
         'next_payout':   next_payout,
         'payout_time':   time_str,
     }
+
+
+def get_or_create_book_chore():
+    from .models import Chore
+    from . import db
+    chore = Chore.query.filter_by(name='Read a Book').first()
+    if not chore:
+        chore = Chore(name='Read a Book', description='Finish a library book',
+                      icon='📚', default_value=0.0, is_active=False)
+        db.session.add(chore)
+        db.session.flush()
+    return chore

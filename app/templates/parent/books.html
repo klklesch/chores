@@ -1,0 +1,597 @@
+{% extends "parent/base_parent.html" %}
+{% block title %}Library Books{% endblock %}
+{% from '_macros.html' import avatar %}
+
+{% block parent_content %}
+<div x-data="{ selectedIds: [], confirmAction: null, addOpen: false }">
+
+  <!-- Page header -->
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-xl font-bold text-gray-800">📚 Books</h2>
+    <div class="flex items-center gap-2">
+      <a href="{{ url_for('parent.books_history') }}"
+         class="bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold px-3 py-1.5 rounded-xl text-sm transition-colors">
+        History
+      </a>
+      <button type="button" @click="addOpen = !addOpen"
+              :class="addOpen ? 'bg-indigo-700' : 'bg-indigo-600 hover:bg-indigo-700'"
+              class="text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors">
+        <span x-show="!addOpen">+ Add Book</span>
+        <span x-show="addOpen" x-cloak>✕ Cancel</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Add-book panel -->
+  <div x-show="addOpen" x-cloak class="bg-indigo-50 rounded-2xl p-4 mb-4 border border-indigo-100">
+    <h3 class="font-semibold text-indigo-800 mb-3">Check Out a Book</h3>
+
+    <!-- Search input + scan button -->
+    <div class="flex gap-2 mb-2">
+      <input id="book-search-input" type="text" name="q" autocomplete="off"
+             placeholder="Search by title, author, or ISBN…"
+             hx-get="{{ url_for('parent.search_books_external') }}"
+             hx-trigger="input delay:400ms"
+             hx-target="#book-search-results"
+             hx-swap="innerHTML"
+             class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white">
+      <button id="scan-btn" type="button" onclick="toggleScan()"
+              class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-xl text-sm transition-colors"
+              title="Scan barcode">📷</button>
+    </div>
+
+    <!-- Barcode scan container -->
+    <div id="scan-container" class="hidden mb-2">
+      <video id="scan-video" class="w-full rounded-xl bg-black" style="max-height:200px"></video>
+      <button type="button" onclick="stopScan()" class="mt-1 text-xs text-gray-500 hover:text-gray-700 underline">Stop scanning</button>
+    </div>
+    <div id="scan-fallback" class="hidden mb-2 text-sm text-red-500 bg-red-50 rounded-xl px-3 py-2"></div>
+
+    <!-- Scrollable results pane (filled by HTMX) -->
+    <div id="book-search-results" class="max-h-56 overflow-y-auto mb-3"></div>
+
+    <!-- Selected book preview -->
+    <div id="selected-preview" class="hidden mb-3">
+      <div class="flex items-center gap-3 bg-white border-2 border-indigo-300 rounded-xl px-3 py-2">
+        <img id="preview-cover" src="" class="w-10 h-14 object-cover rounded shrink-0 hidden" alt="">
+        <div id="preview-cover-fallback" class="w-10 h-14 bg-gray-100 rounded shrink-0 hidden items-center justify-center text-gray-300 text-xl">📚</div>
+        <div class="flex-1 min-w-0">
+          <div id="preview-title" class="font-semibold text-sm text-gray-800 truncate"></div>
+          <div id="preview-author" class="text-xs text-gray-500 truncate"></div>
+          <div id="preview-isbn" class="text-xs font-mono text-gray-400"></div>
+        </div>
+        <button type="button" onclick="clearBookSelection()" class="text-gray-300 hover:text-red-400 text-xl leading-none ml-auto shrink-0">✕</button>
+      </div>
+    </div>
+
+    <!-- Checkout form (hidden fields filled by JS on selection) -->
+    <form method="POST" action="{{ url_for('parent.add_book') }}">
+      <input type="hidden" name="title" id="sel-title">
+      <input type="hidden" name="author" id="sel-author">
+      <input type="hidden" name="isbn" id="sel-isbn">
+      <input type="hidden" name="cover_url" id="sel-cover">
+
+      <div class="mb-4">
+        <label class="block text-xs font-medium text-gray-600 mb-1">Due Date <span class="text-gray-400">(optional — defaults to loan period)</span></label>
+        <input type="date" name="due_date"
+               class="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white">
+      </div>
+
+      <div class="flex gap-2">
+        <button type="submit" id="checkout-btn" disabled
+                class="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors">
+          Check Out
+        </button>
+        <button type="button" @click="addOpen = false; clearBookSelection()"
+                class="bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold px-3 py-1.5 rounded-xl text-sm transition-colors">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Mass-action: bulk return confirmation -->
+  <div x-show="confirmAction === 'return'" x-cloak
+       class="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
+    <p class="font-semibold text-amber-800 mb-3">
+      Return <span x-text="selectedIds.length"></span> book(s)?
+    </p>
+    <form method="POST" action="{{ url_for('parent.bulk_return_checkouts') }}">
+      <template x-for="cid in selectedIds" :key="cid">
+        <input type="hidden" name="checkout_ids" :value="cid">
+      </template>
+      <div class="flex gap-2">
+        <button type="submit"
+                class="bg-amber-500 hover:bg-amber-600 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors">
+          Confirm Return
+        </button>
+        <button type="button" @click="confirmAction = null"
+                class="bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold px-3 py-1.5 rounded-xl text-sm transition-colors">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Mass-action: bulk assign -->
+  <div x-show="confirmAction === 'assign'" x-cloak
+       class="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 mb-4">
+    <p class="font-semibold text-indigo-800 mb-1">Assign selected books to:</p>
+    <p class="text-xs text-gray-500 mb-3">Creates assignments for each selected checkout + child pair. Existing assignments are skipped.</p>
+    <form method="POST" action="{{ url_for('parent.bulk_assign_books') }}">
+      <template x-for="cid in selectedIds" :key="cid">
+        <input type="hidden" name="checkout_ids" :value="cid">
+      </template>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-2">Children</label>
+          <div class="space-y-2">
+            {% for child in nav_children %}
+            <label class="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" name="child_ids" value="{{ child.id }}"
+                     class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-300">
+              {{ avatar(child, 'w-6 h-6', 'text-xs') }}
+              <span class="text-gray-700">{{ child.name }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Reward per book ($)</label>
+          <div class="relative w-32">
+            <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+            <input type="number" name="reward" step="0.01" min="0" value="0.00"
+                   class="w-full border border-gray-200 rounded-xl pl-5 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white">
+          </div>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button type="submit"
+                class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors">
+          Assign
+        </button>
+        <button type="button" @click="confirmAction = null"
+                class="bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold px-3 py-1.5 rounded-xl text-sm transition-colors">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Mass-action: bulk set status -->
+  <div x-show="confirmAction === 'setstatus'" x-cloak
+       class="bg-gray-50 border border-gray-200 rounded-2xl p-4 mb-4">
+    <p class="font-semibold text-gray-800 mb-1">Set status for all assignments on <span x-text="selectedIds.length"></span> book(s):</p>
+    <p class="text-xs text-gray-400 mb-3">Applies to every child assignment on the selected checkouts.</p>
+    <form method="POST" action="{{ url_for('parent.bulk_set_status_checkouts') }}">
+      <template x-for="cid in selectedIds" :key="cid">
+        <input type="hidden" name="checkout_ids" :value="cid">
+      </template>
+      <div class="flex items-center gap-3 mb-3">
+        <select name="status"
+                class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+          <option value="unread">Unread</option>
+          <option value="reading">Reading</option>
+          <option value="unfinished">Unfinished</option>
+        </select>
+      </div>
+      <div class="flex gap-2">
+        <button type="submit"
+                class="bg-gray-700 hover:bg-gray-800 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors">
+          Apply
+        </button>
+        <button type="button" @click="confirmAction = null"
+                class="bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold px-3 py-1.5 rounded-xl text-sm transition-colors">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Sort + Search row -->
+  <div class="flex items-center gap-2 mb-3">
+    <span class="text-xs text-gray-400 font-medium shrink-0">Sort:</span>
+    {% for sort_key, sort_label in [('status', 'Status'), ('title', 'Title'), ('reward', 'Reward')] %}
+    <a href="{{ url_for('parent.books_dashboard', sort=sort_key) }}"
+       class="px-3 py-1 rounded-lg text-xs font-semibold transition-colors
+              {{ 'bg-indigo-600 text-white' if current_sort == sort_key else 'bg-gray-100 hover:bg-gray-200 text-gray-600' }}">
+      {{ sort_label }}
+    </a>
+    {% endfor %}
+  </div>
+  <div class="mb-4">
+    <input type="text" name="q" placeholder="Search books..."
+           hx-get="{{ url_for('parent.search_books') }}"
+           hx-trigger="input delay:300ms"
+           hx-target="#book-list"
+           hx-swap="innerHTML"
+           class="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white">
+  </div>
+
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div class="mb-4 space-y-2">
+    {% for category, message in messages %}
+    <div class="rounded-xl px-4 py-2 text-sm font-medium
+      {% if category == 'success' %}bg-green-100 text-green-700
+      {% elif category == 'error' %}bg-red-100 text-red-600
+      {% else %}bg-indigo-100 text-indigo-700{% endif %}">
+      {{ message }}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endwith %}
+
+  <!-- Book accordion list -->
+  <div id="book-list" class="space-y-3">
+    {% for co in checkouts %}
+    <details class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <summary class="flex items-center gap-3 px-4 py-3 cursor-pointer list-none select-none">
+
+        <!-- Selection checkbox -->
+        <input type="checkbox" :value="{{ co.id }}" x-model="selectedIds"
+               @click.stop
+               class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-300 shrink-0">
+
+        <!-- Cover thumbnail -->
+        <img src="/parent/books/{{ co.book.id }}/cover.svg"
+             width="40" height="56"
+             class="rounded object-cover shrink-0 bg-gray-100"
+             alt="{{ co.book.title }}">
+
+        <!-- Title + author (click title to open detail dialog) -->
+        <div class="flex-1 min-w-0">
+          <button type="button"
+                  onclick="document.getElementById('book-detail-{{ co.id }}').showModal(); event.stopPropagation()"
+                  class="font-semibold text-gray-800 hover:text-indigo-600 transition-colors truncate block w-full text-left">
+            {{ co.book.title }}
+          </button>
+          {% if co.book.author %}
+          <div class="text-sm text-gray-400 truncate">{{ co.book.author }}</div>
+          {% endif %}
+        </div>
+
+        <!-- Due date chip -->
+        {% if co.due_date %}
+          {% if co.is_overdue %}
+          <span class="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full font-semibold shrink-0">Overdue</span>
+          {% elif co.days_until_due is not none and co.days_until_due <= 3 %}
+          <span class="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-semibold shrink-0">Due {{ co.due_date.strftime('%b') }} {{ co.due_date.day }}</span>
+          {% else %}
+          <span class="bg-gray-100 text-gray-500 text-xs px-2 py-0.5 rounded-full font-semibold shrink-0">Due {{ co.due_date.strftime('%b') }} {{ co.due_date.day }}</span>
+          {% endif %}
+        {% endif %}
+
+        <!-- Assignment status chips (initials) -->
+        <div class="flex items-center gap-1 shrink-0">
+          {% if co.assignments %}
+            {% for a in co.assignments %}
+              {% if a.status == 'reading' %}
+              <span class="bg-blue-100 text-blue-700 text-xs w-5 h-5 flex items-center justify-center rounded-full font-bold" title="{{ a.child.name }}: reading">{{ a.child.name[0].upper() }}</span>
+              {% elif a.status == 'finished' %}
+              <span class="bg-green-100 text-green-700 text-xs w-5 h-5 flex items-center justify-center rounded-full font-bold" title="{{ a.child.name }}: finished">{{ a.child.name[0].upper() }}</span>
+              {% elif a.status == 'unfinished' %}
+              <span class="bg-red-100 text-red-600 text-xs w-5 h-5 flex items-center justify-center rounded-full font-bold" title="{{ a.child.name }}: unfinished">{{ a.child.name[0].upper() }}</span>
+              {% else %}
+              <span class="bg-gray-100 text-gray-500 text-xs w-5 h-5 flex items-center justify-center rounded-full font-bold" title="{{ a.child.name }}: unread">{{ a.child.name[0].upper() }}</span>
+              {% endif %}
+            {% endfor %}
+          {% else %}
+          <span class="text-xs text-gray-300 italic hidden sm:inline">No one assigned</span>
+          {% endif %}
+        </div>
+
+        <!-- Mark returned button -->
+        <form method="POST" action="{{ url_for('parent.return_checkout', checkout_id=co.id) }}"
+              @click.stop @submit.stop>
+          <button type="submit"
+                  class="bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold px-3 py-1.5 rounded-xl text-sm transition-colors shrink-0">
+            Return
+          </button>
+        </form>
+
+        <!-- Expand chevron -->
+        <svg class="w-4 h-4 text-gray-400 shrink-0 transition-transform details-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+      </summary>
+
+      <!-- Expanded: per-child assignment rows -->
+      <div class="px-4 pb-4 pt-2 border-t border-gray-100">
+        {% if co.assignments %}
+        <div class="space-y-3">
+          {% for a in co.assignments %}
+          <div class="flex items-center gap-3 flex-wrap">
+
+            <!-- Child avatar + name -->
+            <div class="flex items-center gap-2 shrink-0">
+              {{ avatar(a.child, 'w-8 h-8', 'text-sm') }}
+              <span class="text-sm font-semibold text-gray-700">{{ a.child.name }}</span>
+            </div>
+
+            <!-- Combined status + reward form (single Save) -->
+            <form method="POST" action="{{ url_for('parent.update_assignment', assignment_id=a.id) }}"
+                  class="flex items-center gap-2 ml-auto">
+              <span class="text-xs text-gray-400 font-medium">Status</span>
+              <select name="status"
+                      class="border border-gray-200 rounded-lg px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                <option value="unassigned">— Unassign —</option>
+                <option value="unread"      {{ 'selected' if a.status == 'unread' }}>Unread</option>
+                <option value="reading"     {{ 'selected' if a.status == 'reading' }}>Reading</option>
+                {% if a.status == 'finished' %}
+                <option value="finished" selected>Finished</option>
+                {% endif %}
+                <option value="unfinished"  {{ 'selected' if a.status == 'unfinished' }}>Unfinished</option>
+              </select>
+              <span class="text-xs text-gray-400 font-medium ml-1">Reward</span>
+              <span class="text-gray-400 text-sm">$</span>
+              <input type="number" name="reward" step="0.01" min="0"
+                     value="{{ '%.2f'|format(a.reward_value) }}"
+                     class="w-20 border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+              <button type="submit"
+                      class="text-xs text-indigo-600 font-semibold hover:text-indigo-800 transition-colors ml-1">
+                Save
+              </button>
+            </form>
+
+            <!-- Mark Finished / Approved badge -->
+            {% if a.status not in ('approved', 'finished') %}
+            <form method="POST" action="{{ url_for('parent.mark_book_finished', assignment_id=a.id) }}" class="shrink-0">
+              <button type="submit"
+                      class="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-3 py-1.5 rounded-xl text-sm transition-colors">
+                ✓ Mark Finished
+              </button>
+            </form>
+            {% else %}
+            <span class="bg-amber-100 text-amber-700 text-xs px-2 py-1 rounded-full font-semibold shrink-0">Approved</span>
+            {% endif %}
+
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-gray-400 italic py-2">No children assigned to this checkout.</p>
+        {% endif %}
+
+        <p class="text-xs text-gray-300 mt-3 pt-2 border-t border-gray-50">
+          Checked out {{ co.checked_out_date.strftime('%b') }} {{ co.checked_out_date.day }}, {{ co.checked_out_date.year }}
+        </p>
+      </div>
+    </details>
+    {% else %}
+    <div class="bg-white rounded-2xl shadow-sm p-10 text-center text-gray-400">
+      <div class="text-4xl mb-3">📚</div>
+      <p class="font-medium">No active checkouts.</p>
+      <p class="text-sm mt-1">Click <strong>+ Add Book</strong> to check out a library book.</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Mass action floating bar -->
+  <div x-show="selectedIds.length > 0" x-cloak
+       class="fixed bottom-4 left-1/2 -translate-x-1/2 bg-gray-900 text-white rounded-2xl shadow-2xl px-5 py-3 flex items-center gap-3 z-50 flex-wrap justify-center">
+    <span class="text-sm font-semibold" x-text="selectedIds.length + ' selected'"></span>
+    <button type="button"
+            @click="confirmAction = (confirmAction === 'return' ? null : 'return'); window.scrollTo({top: 0, behavior: 'smooth'})"
+            class="bg-white text-gray-900 font-semibold px-3 py-1.5 rounded-xl text-sm hover:bg-gray-100 transition-colors">
+      Mark Returned
+    </button>
+    <button type="button"
+            @click="confirmAction = (confirmAction === 'assign' ? null : 'assign'); window.scrollTo({top: 0, behavior: 'smooth'})"
+            class="bg-indigo-500 hover:bg-indigo-600 text-white font-semibold px-3 py-1.5 rounded-xl text-sm transition-colors">
+      Assign to Child
+    </button>
+    <button type="button"
+            @click="confirmAction = (confirmAction === 'setstatus' ? null : 'setstatus'); window.scrollTo({top: 0, behavior: 'smooth'})"
+            class="bg-gray-600 hover:bg-gray-500 text-white font-semibold px-3 py-1.5 rounded-xl text-sm transition-colors">
+      Set Status
+    </button>
+    <button type="button" @click="selectedIds = []; confirmAction = null"
+            class="text-gray-400 hover:text-white transition-colors text-lg leading-none ml-1">
+      ✕
+    </button>
+  </div>
+
+</div>
+
+<style>
+  details[open] .details-chevron {
+    transform: rotate(90deg);
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::marker { display: none; }
+</style>
+
+<!-- Book detail dialogs (one per active checkout) -->
+{% for co in checkouts %}
+<dialog id="book-detail-{{ co.id }}"
+        class="rounded-2xl shadow-2xl p-0 w-full max-w-lg m-auto border-0 backdrop:bg-black/40">
+  <div class="p-6 space-y-4">
+    <!-- Header row: cover + meta -->
+    <div class="flex gap-5">
+      <img src="/parent/books/{{ co.book.id }}/cover.svg"
+           class="w-28 rounded-xl object-cover shadow shrink-0" style="aspect-ratio:2/3"
+           alt="{{ co.book.title }}">
+      <div class="flex-1 min-w-0 space-y-1">
+        <div class="font-bold text-gray-800 text-xl leading-tight">{{ co.book.title }}</div>
+        {% if co.book.author %}
+        <div class="text-gray-500 text-sm">{{ co.book.author }}</div>
+        {% endif %}
+        {% if co.book.isbn %}
+        <div class="text-gray-400 text-xs font-mono">ISBN {{ co.book.isbn }}</div>
+        {% endif %}
+        <div class="text-gray-400 text-xs mt-2">
+          Checked out {{ co.checked_out_date.strftime('%b') }} {{ co.checked_out_date.day }}, {{ co.checked_out_date.year }}
+        </div>
+        {% if co.due_date %}
+        <div class="text-xs font-semibold {% if co.is_overdue %}text-red-500{% elif co.days_until_due is not none and co.days_until_due <= 3 %}text-amber-600{% else %}text-gray-400{% endif %}">
+          {% if co.is_overdue %}Overdue — due{% else %}Due{% endif %} {{ co.due_date.strftime('%b') }} {{ co.due_date.day }}, {{ co.due_date.year }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Assignment table -->
+    {% if co.assignments %}
+    <div class="border border-gray-100 rounded-xl overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          <tr>
+            <th class="px-3 py-2 text-left">Child</th>
+            <th class="px-3 py-2 text-left">Status</th>
+            <th class="px-3 py-2 text-left">Reward</th>
+            <th class="px-3 py-2 text-left">Started</th>
+            <th class="px-3 py-2 text-left">Finished</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50">
+          {% for a in co.assignments %}
+          <tr>
+            <td class="px-3 py-2 font-medium text-gray-700">{{ a.child.name }}</td>
+            <td class="px-3 py-2">
+              {% if a.status == 'reading' %}<span class="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full font-semibold">Reading</span>
+              {% elif a.status == 'finished' %}<span class="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-semibold">Finished</span>
+              {% elif a.status == 'approved' %}<span class="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-semibold">Approved</span>
+              {% elif a.status == 'unfinished' %}<span class="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full font-semibold">Unfinished</span>
+              {% else %}<span class="bg-gray-100 text-gray-500 text-xs px-2 py-0.5 rounded-full font-semibold">Unread</span>
+              {% endif %}
+            </td>
+            <td class="px-3 py-2 text-emerald-600 font-semibold">${{ "%.2f"|format(a.reward_value) }}</td>
+            <td class="px-3 py-2 text-gray-400 text-xs">
+              {% if a.started_date %}{{ a.started_date.strftime('%b') }} {{ a.started_date.day }}{% else %}—{% endif %}
+            </td>
+            <td class="px-3 py-2 text-gray-400 text-xs">
+              {% if a.finished_date %}{{ a.finished_date.strftime('%b') }} {{ a.finished_date.day }}{% else %}—{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-sm text-gray-400 italic">No children assigned to this checkout.</p>
+    {% endif %}
+
+    <!-- Actions -->
+    <div class="flex gap-2 pt-1">
+      <form method="POST" action="{{ url_for('parent.return_checkout', checkout_id=co.id) }}">
+        <button type="submit"
+                class="bg-amber-500 hover:bg-amber-600 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors">
+          Mark Returned
+        </button>
+      </form>
+      <button type="button"
+              onclick="document.getElementById('book-detail-{{ co.id }}').close()"
+              class="bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold px-4 py-2 rounded-xl text-sm transition-colors">
+        Close
+      </button>
+    </div>
+  </div>
+</dialog>
+{% endfor %}
+
+<!-- ZXing barcode scanner (loaded only on this page) -->
+<script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script>
+// Result selection
+document.addEventListener('click', function (e) {
+  var item = e.target.closest('.result-item');
+  if (!item) return;
+
+  // Highlight the selected row
+  document.querySelectorAll('.result-item').forEach(function (r) {
+    r.classList.remove('bg-indigo-100', 'border-l-indigo-400');
+    r.classList.add('border-l-transparent');
+  });
+  item.classList.remove('border-l-transparent');
+  item.classList.add('bg-indigo-100', 'border-l-indigo-400');
+
+  // Fill hidden form fields
+  document.getElementById('sel-title').value  = item.dataset.title;
+  document.getElementById('sel-author').value = item.dataset.author;
+  document.getElementById('sel-isbn').value   = item.dataset.isbn;
+  document.getElementById('sel-cover').value  = item.dataset.cover;
+
+  // Show preview
+  document.getElementById('preview-title').textContent  = item.dataset.title;
+  document.getElementById('preview-author').textContent = item.dataset.author;
+  document.getElementById('preview-isbn').textContent   = item.dataset.isbn ? 'ISBN ' + item.dataset.isbn : '';
+  var coverImg = document.getElementById('preview-cover');
+  var coverFb  = document.getElementById('preview-cover-fallback');
+  if (item.dataset.cover) {
+    coverImg.src = item.dataset.cover;
+    coverImg.classList.remove('hidden');
+    coverFb.classList.add('hidden');
+    coverFb.style.display = '';
+  } else {
+    coverImg.classList.add('hidden');
+    coverFb.classList.remove('hidden');
+    coverFb.style.display = 'flex';
+  }
+  document.getElementById('selected-preview').classList.remove('hidden');
+  document.getElementById('checkout-btn').disabled = false;
+});
+
+window.clearBookSelection = function () {
+  ['sel-title', 'sel-author', 'sel-isbn', 'sel-cover'].forEach(function (id) {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('selected-preview').classList.add('hidden');
+  document.getElementById('checkout-btn').disabled = true;
+};
+
+(function () {
+  var codeReader = null;
+  var scanning = false;
+
+  window.toggleScan = function () {
+    if (scanning) { stopScan(); } else { startScan(); }
+  };
+
+  window.startScan = function () {
+    var container = document.getElementById('scan-container');
+    var fallback  = document.getElementById('scan-fallback');
+    var btn       = document.getElementById('scan-btn');
+    fallback.classList.add('hidden');
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      fallback.textContent = 'Camera not available on this device or browser.';
+      fallback.classList.remove('hidden');
+      return;
+    }
+
+    container.classList.remove('hidden');
+    btn.textContent = '⏹';
+    btn.title = 'Stop scanning';
+    scanning = true;
+
+    if (!codeReader) { codeReader = new ZXing.BrowserMultiFormatReader(); }
+
+    codeReader.decodeFromConstraints(
+      { video: { facingMode: { ideal: 'environment' } } },
+      'scan-video',
+      function (result, err) {
+        if (result) {
+          var input = document.getElementById('book-search-input');
+          input.value = result.getText();
+          stopScan();
+          input.dispatchEvent(new Event('input'));
+        }
+      }
+    );
+  };
+
+  window.stopScan = function () {
+    if (codeReader) { codeReader.reset(); }
+    scanning = false;
+    document.getElementById('scan-container').classList.add('hidden');
+    var btn = document.getElementById('scan-btn');
+    btn.textContent = '📷';
+    btn.title = 'Scan barcode with camera';
+  };
+})();
+</script>
+
+{% endblock %}

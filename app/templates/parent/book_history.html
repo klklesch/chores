@@ -1,0 +1,102 @@
+{% extends "parent/base_parent.html" %}
+{% block title %}Book History{% endblock %}
+{% from '_macros.html' import avatar %}
+
+{% block parent_content %}
+
+<!-- Page header -->
+<div class="flex items-center justify-between mb-6">
+  <h2 class="text-xl font-bold text-gray-800">📚 Book History</h2>
+  <a href="{{ url_for('parent.books_dashboard') }}"
+     class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors">
+    Active Books
+  </a>
+</div>
+
+{% if checkouts %}
+<div class="space-y-4">
+  {% for co in checkouts %}
+  <div class="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
+    <div class="flex items-start gap-4">
+
+      <!-- Cover thumbnail -->
+      <img src="/parent/books/{{ co.book.id }}/cover.svg"
+           width="40" height="56"
+           class="rounded object-cover shrink-0 bg-gray-100 mt-0.5"
+           alt="{{ co.book.title }}">
+
+      <!-- Book info -->
+      <div class="flex-1 min-w-0">
+        <div class="font-semibold text-gray-800">{{ co.book.title }}</div>
+        {% if co.book.author %}
+        <div class="text-sm text-gray-400">{{ co.book.author }}</div>
+        {% endif %}
+        <div class="text-xs text-gray-300 mt-1">
+          Returned
+          {% if co.returned_date %}
+            {{ co.returned_date.strftime('%b') }} {{ co.returned_date.day }}, {{ co.returned_date.year }}
+          {% else %}
+            —
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Check out again -->
+      <form method="POST" action="{{ url_for('parent.checkout_again', book_id=co.book.id) }}"
+            class="shrink-0">
+        <button type="submit"
+                class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors">
+          Check Out Again
+        </button>
+      </form>
+    </div>
+
+    <!-- Assignment summary (expandable) -->
+    {% if co.assignments %}
+    <details class="mt-3">
+      <summary class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 select-none list-none flex items-center gap-1">
+        <svg class="w-3 h-3 transition-transform details-chevron-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+        {{ co.assignments|length }} child{% if co.assignments|length != 1 %}ren{% endif %} assigned
+      </summary>
+      <div class="mt-2 space-y-2 pl-2 border-l-2 border-gray-100">
+        {% for a in co.assignments %}
+        <div class="flex items-center gap-2">
+          {{ avatar(a.child, 'w-7 h-7', 'text-xs') }}
+          <span class="text-sm text-gray-700 font-medium">{{ a.child.name }}</span>
+          {% if a.status == 'finished' %}
+          <span class="bg-green-100 text-green-700 text-xs px-1.5 py-0.5 rounded-full font-semibold">Finished</span>
+          {% elif a.status == 'reading' %}
+          <span class="bg-blue-100 text-blue-700 text-xs px-1.5 py-0.5 rounded-full font-semibold">Reading</span>
+          {% elif a.status == 'unfinished' %}
+          <span class="bg-red-100 text-red-600 text-xs px-1.5 py-0.5 rounded-full font-semibold">Unfinished</span>
+          {% else %}
+          <span class="bg-gray-100 text-gray-500 text-xs px-1.5 py-0.5 rounded-full font-semibold">Unread</span>
+          {% endif %}
+          <span class="text-xs text-gray-400 ml-auto">${{ '%.2f'|format(a.reward_value) }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="bg-white rounded-2xl shadow-sm p-10 text-center text-gray-400">
+  <div class="text-4xl mb-3">📚</div>
+  <p class="font-medium">No returned books yet.</p>
+  <p class="text-sm mt-1">Books appear here after you mark them as returned.</p>
+</div>
+{% endif %}
+
+<style>
+  details[open] .details-chevron-sm {
+    transform: rotate(90deg);
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::marker { display: none; }
+</style>
+
+{% endblock %}
