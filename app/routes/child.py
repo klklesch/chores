@@ -1,8 +1,8 @@
 import calendar as cal_module
 from datetime import datetime, date, timedelta
-from flask import Blueprint, render_template, session, redirect, url_for, flash, request
-from ..models import Child, AssignedChore, ChoreInstance, BalanceTransaction, AppSettings, WishlistItem
-from ..utils import get_payout_period_info
+from flask import Blueprint, render_template, session, redirect, url_for, flash, request, make_response
+from ..models import Child, AssignedChore, ChoreInstance, BalanceTransaction, WishlistItem, BookCheckout, BookAssignment
+from ..utils import get_payout_period_info, get_or_create_book_chore
 from .. import db
 
 child_bp = Blueprint('child', __name__)
@@ -93,8 +93,6 @@ def dashboard(child_id):
 
 @child_bp.route('/<int:child_id>/history')
 def history(child_id):
-    from ..scheduler import get_period
-
     child = Child.query.get_or_404(child_id)
 
     month_str = request.args.get('month', date.today().strftime('%Y-%m'))
@@ -106,8 +104,6 @@ def history(child_id):
 
     month_start = date(year, month, 1)
     month_end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
-    days_in_month = [month_start + timedelta(days=i) for i in range((month_end - month_start).days)]
-
     day_str = request.args.get('day')
     selected_day = None
     if day_str:
@@ -264,7 +260,7 @@ def wishlist(child_id):
 
 @child_bp.route('/<int:child_id>/wishlist/add', methods=['POST'])
 def add_wish(child_id):
-    child = Child.query.get_or_404(child_id)
+    Child.query.get_or_404(child_id)
     name = request.form.get('name', '').strip()
     price_raw = request.form.get('price', '').strip()
     if not name or not price_raw:
@@ -343,3 +339,131 @@ def submit_chore(child_id, ac_id):
 
     flash('Nice work! Your chore has been sent to a parent for review. 🌟', 'success')
     return redirect(url_for('child.dashboard', child_id=child_id))
+
+
+@child_bp.route('/<int:child_id>/books')
+def child_books(child_id):
+    child = Child.query.get_or_404(child_id)
+    checkouts = (
+        BookCheckout.query
+        .filter(BookCheckout.returned_date == None)  # noqa: E711
+        .all()
+    )
+    assignments = {
+        co.id: BookAssignment.query.filter_by(checkout_id=co.id, child_id=child_id).first()
+        for co in checkouts
+    }
+    return render_template('child/books.html', child=child, checkouts=checkouts, assignments=assignments)
+
+
+@child_bp.route('/<int:child_id>/books/<int:checkout_id>/self_assign', methods=['POST'])
+def self_assign_book(child_id, checkout_id):
+    existing = BookAssignment.query.filter_by(checkout_id=checkout_id, child_id=child_id).first()
+    if existing:
+        flash('You already have this book on your reading list.', 'error')
+        return redirect(url_for('child.child_books', child_id=child_id))
+    db.session.add(BookAssignment(
+        checkout_id=checkout_id,
+        child_id=child_id,
+        reward_value=0.0,
+        status='unread',
+    ))
+    db.session.commit()
+    flash('Added to your reading list!', 'success')
+    return redirect(url_for('child.child_books', child_id=child_id))
+
+
+@child_bp.route('/<int:child_id>/assignments/<int:assignment_id>/start', methods=['POST'])
+def start_book(child_id, assignment_id):
+    assignment = BookAssignment.query.get_or_404(assignment_id)
+    if assignment.status != 'unread':
+        flash('This book cannot be started right now.', 'error')
+        return redirect(url_for('child.child_books', child_id=child_id))
+    assignment.status = 'reading'
+    assignment.started_date = datetime.now()
+    db.session.commit()
+    flash('Happy reading!', 'success')
+    return redirect(url_for('child.child_books', child_id=child_id))
+
+
+@child_bp.route('/<int:child_id>/assignments/<int:assignment_id>/finish', methods=['POST'])
+def finish_book(child_id, assignment_id):
+    assignment = BookAssignment.query.get_or_404(assignment_id)
+    checkout = assignment.checkout
+    book = checkout.book
+    if assignment.status != 'reading':
+        flash('This book cannot be finished right now.', 'error')
+        return redirect(url_for('child.child_books', child_id=child_id))
+    assignment.status = 'finished'
+    assignment.finished_date = datetime.now()
+    book_chore = get_or_create_book_chore()
+    ac = AssignedChore(
+        child_id=child_id,
+        chore_id=book_chore.id,
+        custom_value=assignment.reward_value,
+        override_name=book.title,
+        is_recurring=False,
+        is_active=True,
+    )
+    db.session.add(ac)
+    db.session.flush()
+    inst = ChoreInstance(
+        assigned_chore_id=ac.id,
+        status='submitted',
+        assigned_date=datetime.now(),
+        submitted_date=datetime.now(),
+        period=date.today().isoformat(),
+    )
+    db.session.add(inst)
+    db.session.flush()
+    assignment.chore_instance_id = inst.id
+    from ..notifications import send_chore_submitted
+    send_chore_submitted(inst)
+    db.session.commit()
+    flash('Great job finishing the book!', 'success')
+    return redirect(url_for('child.child_books', child_id=child_id))
+
+
+@child_bp.route('/<int:child_id>/books/history')
+def child_books_history(child_id):
+    child = Child.query.get_or_404(child_id)
+    assignments = (
+        BookAssignment.query
+        .filter_by(child_id=child_id)
+        .order_by(BookAssignment.assigned_date.desc())
+        .all()
+    )
+    return render_template('child/books_history_partial.html', child=child, assignments=assignments)
+
+
+@child_bp.route('/<int:child_id>/books/search')
+def search_child_books(child_id):
+    child = Child.query.get_or_404(child_id)
+    q = request.args.get('q', '').strip()
+    checkouts = (
+        BookCheckout.query
+        .filter(BookCheckout.returned_date == None)  # noqa: E711
+        .all()
+    )
+    if q:
+        from thefuzz import process
+        choices = {co.book.title: co for co in checkouts}
+        results = process.extractBests(q, choices, score_cutoff=50)
+        checkouts = [co for co, score in results]
+    assignments = {
+        co.id: BookAssignment.query.filter_by(checkout_id=co.id, child_id=child_id).first()
+        for co in checkouts
+    }
+    tile_size = request.cookies.get('book_tile_size', 'medium')
+    return render_template('child/books_tile_partial.html', checkouts=checkouts, assignments=assignments, child=child, tile_size=tile_size)
+
+
+@child_bp.route('/<int:child_id>/books/tile-size', methods=['POST'])
+def set_book_tile_size(child_id):
+    size = request.form.get('size', 'medium')
+    if size not in ('small', 'medium', 'large'):
+        size = 'medium'
+    resp = make_response('', 204)
+    resp.set_cookie('book_tile_size', size, max_age=60 * 60 * 24 * 365)
+    resp.headers['HX-Trigger'] = 'tileResized'
+    return resp

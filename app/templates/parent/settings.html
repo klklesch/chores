@@ -241,6 +241,44 @@
     {% endif %}
   </div>
 
+  <!-- Books settings -->
+  <div class="bg-white rounded-2xl shadow-sm p-5">
+    <h2 class="font-bold text-gray-800 text-lg mb-1 flex items-center gap-2">📚 Books</h2>
+    <p class="text-gray-400 text-sm mb-4">Settings for the library book tracking feature.</p>
+    <form method="POST" action="{{ url_for('parent.update_settings') }}" class="space-y-4">
+      <div>
+        <label class="block text-xs font-semibold text-gray-500 mb-1">Default Loan Period (days)</label>
+        <div class="flex items-center gap-3">
+          <input type="number" name="book_default_loan_days" min="1" max="365"
+                 value="{{ book_default_loan_days }}"
+                 class="w-24 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+          <span class="text-sm text-gray-500">days</span>
+        </div>
+        <p class="text-xs text-gray-400 mt-1">Pre-fills the due date when checking out a book. Default is 28 days (4 weeks).</p>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-500 mb-1">
+          Google Books API Key
+          <span class="font-normal text-gray-400 ml-1">
+            ({{ 'saved — leave blank to keep' if google_books_api_key_set else 'not configured' }})
+          </span>
+        </label>
+        <input type="password" name="google_books_api_key"
+               placeholder="{{ '••••••••••••••••' if google_books_api_key_set else 'Paste API key here' }}"
+               autocomplete="new-password"
+               class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+        <p class="text-xs text-gray-400 mt-1">
+          Prevents rate-limiting on ISBN lookups. Free key from
+          <a href="https://console.cloud.google.com/" target="_blank" rel="noopener" class="text-indigo-500 hover:underline">Google Cloud Console</a>
+          → APIs &amp; Services → Enable "Books API" → Credentials → Create API Key.
+        </p>
+      </div>
+      <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors active:scale-95">
+        Save
+      </button>
+    </form>
+  </div>
+
   <!-- About -->
   <div class="bg-gray-100 rounded-2xl p-4 text-xs text-gray-400 space-y-1">
     <div class="font-semibold text-gray-500">About</div>

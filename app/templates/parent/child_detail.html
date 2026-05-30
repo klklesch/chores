@@ -110,7 +110,7 @@
          x-data="{ approveOpen: false, denyOpen: false, award: '{{ '%.2f'|format(inst.effective_value) }}' }">
 
       <div class="flex-1 min-w-0">
-        <span class="font-semibold text-gray-800">{{ inst.effective_name }}</span>
+        {% if inst.assigned_chore.chore.icon %}<span class="mr-0.5">{{ inst.assigned_chore.chore.icon }}</span>{% endif %}<span class="font-semibold text-gray-800">{{ inst.effective_name }}</span>
         <span class="text-gray-400 text-xs ml-2">
           {% if inst.submitted_date %}submitted {{ inst.submitted_date.strftime('%b') }} {{ inst.submitted_date.day }}{% endif %}
         </span>

@@ -6,3 +6,5 @@ python-dotenv==1.0.0
 Werkzeug==3.0.3
 itsdangerous==2.2.0
 gunicorn==22.0.0
+thefuzz==0.22.1
+rapidfuzz==3.14.5

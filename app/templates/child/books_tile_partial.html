@@ -1,0 +1,143 @@
+{% set tile_size = tile_size | default('medium') %}
+{% set grid_cols = {'small': 'grid-cols-3 sm:grid-cols-4', 'medium': 'grid-cols-2 sm:grid-cols-3', 'large': 'grid-cols-1 sm:grid-cols-2'} %}
+{% set grid_class = grid_cols.get(tile_size, 'grid-cols-2 sm:grid-cols-3') %}
+<div class="grid {{ grid_class }} gap-3">
+{% if checkouts %}
+  {% for co in checkouts %}
+  {% set a = assignments.get(co.id) %}
+  {% if a %}
+    {% if a.status == 'reading' %}
+      {% set border_class = 'border-blue-400' %}
+    {% elif a.status == 'finished' %}
+      {% set border_class = 'border-green-400' %}
+    {% elif a.status == 'approved' %}
+      {% set border_class = 'border-amber-400' %}
+    {% elif a.status == 'unfinished' %}
+      {% set border_class = 'border-red-400' %}
+    {% else %}
+      {% set border_class = 'border-gray-200' %}
+    {% endif %}
+  {% else %}
+    {% set border_class = 'border-gray-200' %}
+  {% endif %}
+
+  <!-- Book tile -->
+  <div class="bg-white rounded-2xl shadow-sm overflow-hidden border-2 {{ border_class }} cursor-pointer hover:shadow-md transition-shadow"
+       onclick="document.getElementById('modal-search-{{ co.id }}').showModal()">
+    <img src="/parent/books/{{ co.book.id }}/cover.svg" class="w-full aspect-[2/3] object-cover" alt="{{ co.book.title }}">
+    <div class="p-2">
+      <div class="font-semibold text-gray-800 text-sm line-clamp-2">{{ co.book.title }}</div>
+      {% if a %}
+        {% if a.reward_value > 0 %}
+        <div class="text-emerald-600 text-xs font-bold mt-1">${{ "%.2f"|format(a.reward_value) }}</div>
+        {% elif a.status != 'unread' %}
+        <div class="text-gray-400 text-xs mt-1">$0.00</div>
+        {% endif %}
+        {% if a.status == 'reading' %}
+          {% set badge_class = 'bg-blue-100 text-blue-700' %}
+        {% elif a.status == 'finished' %}
+          {% set badge_class = 'bg-green-100 text-green-700' %}
+        {% elif a.status == 'approved' %}
+          {% set badge_class = 'bg-amber-100 text-amber-700' %}
+        {% elif a.status == 'unfinished' %}
+          {% set badge_class = 'bg-red-100 text-red-600' %}
+        {% else %}
+          {% set badge_class = 'bg-gray-100 text-gray-500' %}
+        {% endif %}
+        <span class="inline-block mt-1 text-xs px-2 py-0.5 rounded-full font-semibold {{ badge_class }}">
+          {{ a.status | capitalize }}
+        </span>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+  <p class="col-span-full text-center py-8 text-gray-400">No books match your search.</p>
+{% endif %}
+</div>
+
+<!-- Modals (outside grid flow) -->
+{% for co in checkouts %}
+{% set a = assignments.get(co.id) %}
+{% if a %}
+  {% if a.status == 'reading' %}
+    {% set modal_badge = 'bg-blue-100 text-blue-700' %}
+  {% elif a.status == 'finished' %}
+    {% set modal_badge = 'bg-green-100 text-green-700' %}
+  {% elif a.status == 'approved' %}
+    {% set modal_badge = 'bg-amber-100 text-amber-700' %}
+  {% elif a.status == 'unfinished' %}
+    {% set modal_badge = 'bg-red-100 text-red-600' %}
+  {% else %}
+    {% set modal_badge = 'bg-gray-100 text-gray-500' %}
+  {% endif %}
+{% else %}
+  {% set modal_badge = '' %}
+{% endif %}
+
+<dialog id="modal-search-{{ co.id }}"
+        class="rounded-2xl shadow-2xl p-0 w-full max-w-sm m-auto border-0 backdrop:bg-black/40">
+  <div class="p-5 space-y-4">
+    <div class="flex gap-4">
+      <img src="/parent/books/{{ co.book.id }}/cover.svg" class="w-24 rounded-xl object-cover shadow shrink-0" alt="{{ co.book.title }}" style="aspect-ratio: 2/3">
+      <div class="flex-1 min-w-0">
+        <div class="font-bold text-gray-800 text-lg leading-tight">{{ co.book.title }}</div>
+        {% if co.book.author %}
+        <div class="text-gray-400 text-sm mt-1">{{ co.book.author }}</div>
+        {% endif %}
+        {% if co.due_date %}
+        <div class="text-xs mt-1 {% if co.is_overdue %}text-red-500 font-semibold{% else %}text-gray-400{% endif %}">
+          {% if co.is_overdue %}Overdue! Due {% else %}Due {% endif %}{{ co.due_date.strftime('%b') }} {{ co.due_date.day }}
+        </div>
+        {% endif %}
+        {% if a %}
+        <span class="inline-block mt-2 text-xs px-2 py-0.5 rounded-full font-semibold {{ modal_badge }}">{{ a.status | capitalize }}</span>
+        {% if a.reward_value > 0 %}
+        <div class="text-emerald-600 font-bold mt-1">${{ "%.2f"|format(a.reward_value) }}</div>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+
+    {% if not a %}
+    <form method="POST" action="{{ url_for('child.self_assign_book', child_id=child.id, checkout_id=co.id) }}">
+      <button type="submit"
+              class="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2.5 rounded-xl transition-colors active:scale-95">
+        📚 Add to My Reading List
+      </button>
+    </form>
+    {% elif a.status == 'unread' %}
+    <form method="POST" action="{{ url_for('child.start_book', child_id=child.id, assignment_id=a.id) }}">
+      <button type="submit"
+              class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2.5 rounded-xl transition-colors active:scale-95">
+        📖 I Started It!
+      </button>
+    </form>
+    {% elif a.status == 'reading' %}
+    <form method="POST" action="{{ url_for('child.finish_book', child_id=child.id, assignment_id=a.id) }}">
+      <button type="submit"
+              class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2.5 rounded-xl transition-colors active:scale-95">
+        ✅ I Finished It!
+      </button>
+    </form>
+    {% elif a.status == 'finished' %}
+    <div class="bg-green-50 text-green-700 rounded-xl p-3 text-sm text-center font-medium">
+      ⏳ Waiting for a parent to review!
+    </div>
+    {% elif a.status == 'approved' %}
+    <div class="bg-amber-50 text-amber-700 rounded-xl p-3 text-sm text-center font-medium">
+      🏆 Approved! Your reward has been added.
+    </div>
+    {% elif a.status == 'unfinished' %}
+    <div class="bg-red-50 text-red-600 rounded-xl p-3 text-sm text-center font-medium">
+      Marked as unfinished. Keep trying!
+    </div>
+    {% endif %}
+
+    <button onclick="document.getElementById('modal-search-{{ co.id }}').close()"
+            class="w-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold py-2 rounded-xl text-sm transition-colors">
+      Close
+    </button>
+  </div>
+</dialog>
+{% endfor %}

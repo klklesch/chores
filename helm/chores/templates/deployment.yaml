@@ -44,6 +44,9 @@ spec:
             - name: instance
               mountPath: /app/instance/avatars
               subPath: avatars
+            - name: instance
+              mountPath: /app/instance/covers
+              subPath: covers
           livenessProbe:
             httpGet:
               path: /

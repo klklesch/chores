@@ -1,6 +1,6 @@
 import os
 
-from flask import Blueprint, current_app, render_template, send_from_directory, session, redirect, url_for
+from flask import Blueprint, current_app, send_from_directory, session, redirect, url_for
 
 main_bp = Blueprint('main', __name__)
 

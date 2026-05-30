@@ -1,0 +1,96 @@
+{% extends "parent/base_parent.html" %}
+{% block title %}Review: {{ checkout.book.title }}{% endblock %}
+{% from '_macros.html' import avatar %}
+
+{% block parent_content %}
+
+<!-- Page header -->
+<div class="flex items-center justify-between mb-2">
+  <h2 class="text-xl font-bold text-gray-800">Review: {{ checkout.book.title }}</h2>
+  <a href="{{ url_for('parent.books_dashboard') }}"
+     class="bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold px-3 py-1.5 rounded-xl text-sm transition-colors">
+    Back to Books
+  </a>
+</div>
+<p class="text-gray-400 text-sm mb-6">Check how everyone did before you close out this checkout.</p>
+
+{% if checkout.assignments %}
+
+<form method="POST" action="{{ url_for('parent.review_checkout', checkout_id=checkout.id) }}">
+  <div class="space-y-4 mb-6">
+    {% for a in checkout.assignments %}
+    <div class="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
+      <!-- Child header -->
+      <div class="flex items-center gap-3 mb-4">
+        {{ avatar(a.child, 'w-10 h-10', 'text-lg') }}
+        <div>
+          <div class="font-bold text-gray-800">{{ a.child.name }}</div>
+          <div class="text-xs text-gray-400">Current status:
+            {% if a.status == 'reading' %}
+            <span class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-semibold">Reading</span>
+            {% elif a.status == 'finished' %}
+            <span class="bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-semibold">Finished</span>
+            {% elif a.status == 'unfinished' %}
+            <span class="bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-semibold">Unfinished</span>
+            {% else %}
+            <span class="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-semibold">Unread</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <!-- Status select -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1" for="status_{{ a.id }}">Reading Status</label>
+          <select name="status_{{ a.id }}" id="status_{{ a.id }}"
+                  class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white">
+            <option value="unread" {% if a.status == 'unread' %}selected{% endif %}>Unread</option>
+            <option value="reading" {% if a.status == 'reading' %}selected{% endif %}>Reading</option>
+            <option value="finished" {% if a.status == 'finished' %}selected{% endif %}>Finished</option>
+            <option value="unfinished" {% if a.status == 'unfinished' %}selected{% endif %}>Unfinished</option>
+          </select>
+        </div>
+
+        <!-- Reward input -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1" for="reward_{{ a.id }}">Reward ($)</label>
+          <div class="relative">
+            <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+            <input type="number" name="reward_{{ a.id }}" id="reward_{{ a.id }}"
+                   step="0.01" min="0"
+                   value="{{ '%.2f'|format(a.reward_value) }}"
+                   class="w-full border border-gray-200 rounded-xl pl-5 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white">
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="flex items-center gap-3">
+    <button type="submit"
+            class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors">
+      Save &amp; Done
+    </button>
+    <a href="{{ url_for('parent.books_dashboard') }}"
+       class="bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold px-3 py-1.5 rounded-xl text-sm transition-colors">
+      Back to Books
+    </a>
+  </div>
+</form>
+
+{% else %}
+
+<div class="bg-white rounded-2xl shadow-sm p-10 text-center text-gray-400">
+  <div class="text-4xl mb-3">📖</div>
+  <p class="font-medium">No children were assigned to this book.</p>
+  <a href="{{ url_for('parent.books_dashboard') }}"
+     class="inline-block mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors">
+    Back to Books
+  </a>
+</div>
+
+{% endif %}
+
+{% endblock %}

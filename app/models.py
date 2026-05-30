@@ -20,6 +20,9 @@ class Child(db.Model):
     wishlist_items = db.relationship(
         'WishlistItem', back_populates='child', lazy=True, cascade='all, delete-orphan'
     )
+    book_assignments = db.relationship(
+        'BookAssignment', back_populates='child', lazy=True, cascade='all, delete-orphan'
+    )
 
     @property
     def pending_submission_count(self):
@@ -202,6 +205,66 @@ class WishlistItem(db.Model):
     purchased_date = db.Column(db.DateTime)
 
     child = db.relationship('Child', back_populates='wishlist_items')
+
+
+class Book(db.Model):
+    __tablename__ = 'books'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+    author = db.Column(db.String(200))
+    isbn = db.Column(db.String(20))
+    cover_url = db.Column(db.String(500))
+    notes = db.Column(db.Text)
+
+    checkouts = db.relationship('BookCheckout', back_populates='book', lazy=True, cascade='all, delete-orphan')
+
+
+class BookCheckout(db.Model):
+    __tablename__ = 'book_checkouts'
+    id = db.Column(db.Integer, primary_key=True)
+    book_id = db.Column(db.Integer, db.ForeignKey('books.id'), nullable=False)
+    checked_out_date = db.Column(db.DateTime, default=datetime.now)
+    due_date = db.Column(db.Date)
+    returned_date = db.Column(db.DateTime)
+
+    book = db.relationship('Book', back_populates='checkouts')
+    assignments = db.relationship('BookAssignment', back_populates='checkout', lazy=True, cascade='all, delete-orphan')
+
+    @property
+    def is_returned(self):
+        return self.returned_date is not None
+
+    @property
+    def is_overdue(self):
+        if self.returned_date or not self.due_date:
+            return False
+        from datetime import date
+        return date.today() > self.due_date
+
+    @property
+    def days_until_due(self):
+        if self.returned_date or not self.due_date:
+            return None
+        from datetime import date
+        return (self.due_date - date.today()).days
+
+
+class BookAssignment(db.Model):
+    __tablename__ = 'book_assignments'
+    id = db.Column(db.Integer, primary_key=True)
+    checkout_id = db.Column(db.Integer, db.ForeignKey('book_checkouts.id'), nullable=False)
+    child_id = db.Column(db.Integer, db.ForeignKey('children.id'), nullable=False)
+    reward_value = db.Column(db.Float, default=0.0, nullable=False)
+    status = db.Column(db.String(20), default='unread', nullable=False)
+    # Status flow: unread → reading → finished | unfinished
+    assigned_date = db.Column(db.DateTime, default=datetime.now)
+    started_date = db.Column(db.DateTime)
+    finished_date = db.Column(db.DateTime)
+    chore_instance_id = db.Column(db.Integer, db.ForeignKey('chore_instances.id'))
+
+    checkout = db.relationship('BookCheckout', back_populates='assignments')
+    child = db.relationship('Child', back_populates='book_assignments')
+    chore_instance = db.relationship('ChoreInstance', foreign_keys=[chore_instance_id])
 
 
 class AppSettings(db.Model):

@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% block title %}{{ child.name }}'s Books{% endblock %}
+
+{% block content %}
+{% set tile_size = request.cookies.get('book_tile_size', 'medium') %}
+{% set grid_cols = {'small': 'grid-cols-3 sm:grid-cols-4', 'medium': 'grid-cols-2 sm:grid-cols-3', 'large': 'grid-cols-1 sm:grid-cols-2'} %}
+{% set grid_class = grid_cols.get(tile_size, 'grid-cols-2 sm:grid-cols-3') %}
+
+<div class="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50">
+
+  <!-- Header -->
+  <div class="bg-white shadow-sm">
+    <div class="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
+      <a href="{{ url_for('child.dashboard', child_id=child.id) }}" class="text-gray-400 hover:text-gray-600 transition-colors">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+      </a>
+      <div class="flex items-center gap-3">
+        {% from '_macros.html' import avatar %}
+        {{ avatar(child, 'w-10 h-10', 'text-lg') }}
+        <div>
+          <div class="font-bold text-gray-800">{{ child.name }}</div>
+          <div class="{{ 'text-red-600' if child.balance < 0 else 'text-emerald-600' }} font-semibold text-sm">${{ "%.2f"|format(child.balance) }} saved</div>
+        </div>
+      </div>
+      <a href="{{ url_for('parent.login') }}"
+         class="flex items-center gap-1.5 text-gray-400 hover:text-indigo-600 text-xs font-semibold transition-colors px-2 py-1.5">
+        🔒 Parent
+      </a>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div class="max-w-2xl mx-auto px-4 py-6 space-y-4" x-data="{ tab: 'all' }">
+
+    <!-- Tab bar -->
+    <div class="flex gap-1 bg-white rounded-2xl shadow-sm p-1">
+      <button @click="tab='all'"
+              :class="tab==='all' ? 'bg-orange-500 text-white' : 'text-gray-500 hover:bg-gray-100'"
+              class="flex-1 py-2 rounded-xl text-sm font-semibold transition-colors">All Books</button>
+      <button @click="tab='my'"
+              :class="tab==='my' ? 'bg-orange-500 text-white' : 'text-gray-500 hover:bg-gray-100'"
+              class="flex-1 py-2 rounded-xl text-sm font-semibold transition-colors">My Books</button>
+      <button @click="tab='history'"
+              :class="tab==='history' ? 'bg-orange-500 text-white' : 'text-gray-500 hover:bg-gray-100'"
+              class="flex-1 py-2 rounded-xl text-sm font-semibold transition-colors">History</button>
+    </div>
+
+    <!-- Controls: tile size + search (visible on all/my tabs) -->
+    <div x-show="tab !== 'history'" class="space-y-3">
+      <!-- Tile size toggle -->
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-gray-400 font-semibold mr-1">Size:</span>
+        {% for size_key, size_label in [('small', 'S'), ('medium', 'M'), ('large', 'L')] %}
+        <form hx-post="{{ url_for('child.set_book_tile_size', child_id=child.id) }}"
+              hx-target="body"
+              hx-swap="none"
+              hx-on::after-request="window.location.reload()">
+          <input type="hidden" name="size" value="{{ size_key }}">
+          <button type="submit"
+                  class="w-8 h-8 rounded-xl text-xs font-bold transition-colors
+                         {{ 'bg-orange-500 text-white' if tile_size == size_key else 'bg-gray-100 hover:bg-gray-200 text-gray-600' }}">
+            {{ size_label }}
+          </button>
+        </form>
+        {% endfor %}
+      </div>
+
+      <!-- Search box -->
+      <input type="text" name="q" placeholder="Search books…"
+             hx-get="{{ url_for('child.search_child_books', child_id=child.id) }}"
+             hx-trigger="input delay:300ms"
+             hx-target="#tile-grid"
+             hx-swap="innerHTML"
+             class="w-full border border-gray-200 rounded-2xl px-4 py-2.5 text-base focus:outline-none focus:border-orange-300 focus:ring-2 focus:ring-orange-100 bg-white">
+    </div>
+
+    <!-- Tile grid (all books + my books tabs) -->
+    <div x-show="tab !== 'history'">
+      <!-- Classify checkouts into active vs. finished for section split -->
+      {% set active_cos = [] %}
+      {% set finished_cos = [] %}
+      {% for co in checkouts %}
+        {% set a = assignments.get(co.id) %}
+        {% if a and a.status in ('finished', 'approved', 'unfinished') %}
+          {% set _ = finished_cos.append(co) %}
+        {% else %}
+          {% set _ = active_cos.append(co) %}
+        {% endif %}
+      {% endfor %}
+
+      <div id="tile-grid">
+        {% if checkouts %}
+          <!-- Active section: unread, reading, and unassigned -->
+          <div class="grid {{ grid_class }} gap-3">
+            {% for co in active_cos %}
+            {% set a = assignments.get(co.id) %}
+            {% set border_class = 'border-blue-400' if a and a.status == 'reading' else 'border-gray-200' %}
+            <div x-show="tab==='all' || (tab==='my' && {{ 'true' if a else 'false' }})"
+                 class="bg-white rounded-2xl shadow-sm overflow-hidden border-2 {{ border_class }} cursor-pointer hover:shadow-md transition-shadow"
+                 onclick="document.getElementById('modal-{{ co.id }}').showModal()">
+              <img src="/parent/books/{{ co.book.id }}/cover.svg" class="w-full aspect-[2/3] object-cover" alt="{{ co.book.title }}">
+              <div class="p-2">
+                <div class="font-semibold text-gray-800 text-sm line-clamp-2">{{ co.book.title }}</div>
+                {% if a %}
+                  {% if a.reward_value > 0 %}
+                  <div class="text-emerald-600 text-xs font-bold mt-1">${{ "%.2f"|format(a.reward_value) }}</div>
+                  {% elif a.status != 'unread' %}
+                  <div class="text-gray-400 text-xs mt-1">$0.00</div>
+                  {% endif %}
+                  {% set badge_class = 'bg-blue-100 text-blue-700' if a.status == 'reading' else 'bg-gray-100 text-gray-500' %}
+                  <span class="inline-block mt-1 text-xs px-2 py-0.5 rounded-full font-semibold {{ badge_class }}">
+                    {{ a.status | capitalize }}
+                  </span>
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+
+          <!-- Divider + Finished section (only when there are finished books) -->
+          {% if finished_cos %}
+          <div class="relative my-5">
+            <div class="border-t border-gray-200"></div>
+            <span class="absolute left-1/2 -translate-x-1/2 -top-2.5 bg-amber-50 px-3 text-xs text-gray-400 font-semibold tracking-wide uppercase">Done</span>
+          </div>
+          <div class="grid {{ grid_class }} gap-3 opacity-75">
+            {% for co in finished_cos %}
+            {% set a = assignments.get(co.id) %}
+            {% if a.status == 'finished' %}
+              {% set border_class = 'border-green-400' %}
+            {% elif a.status == 'approved' %}
+              {% set border_class = 'border-amber-400' %}
+            {% else %}
+              {% set border_class = 'border-red-400' %}
+            {% endif %}
+            <div x-show="tab==='all' || (tab==='my' && true)"
+                 class="bg-white rounded-2xl shadow-sm overflow-hidden border-2 {{ border_class }} cursor-pointer hover:shadow-md transition-shadow"
+                 onclick="document.getElementById('modal-{{ co.id }}').showModal()">
+              <img src="/parent/books/{{ co.book.id }}/cover.svg" class="w-full aspect-[2/3] object-cover" alt="{{ co.book.title }}">
+              <div class="p-2">
+                <div class="font-semibold text-gray-800 text-sm line-clamp-2">{{ co.book.title }}</div>
+                {% if a.reward_value > 0 %}
+                <div class="text-emerald-600 text-xs font-bold mt-1">${{ "%.2f"|format(a.reward_value) }}</div>
+                {% else %}
+                <div class="text-gray-400 text-xs mt-1">$0.00</div>
+                {% endif %}
+                {% if a.status == 'finished' %}
+                  {% set badge_class = 'bg-green-100 text-green-700' %}
+                {% elif a.status == 'approved' %}
+                  {% set badge_class = 'bg-amber-100 text-amber-700' %}
+                {% else %}
+                  {% set badge_class = 'bg-red-100 text-red-600' %}
+                {% endif %}
+                <span class="inline-block mt-1 text-xs px-2 py-0.5 rounded-full font-semibold {{ badge_class }}">
+                  {{ a.status | capitalize }}
+                </span>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+        {% else %}
+          <div class="grid {{ grid_class }} gap-3">
+            <div class="col-span-full text-center py-12 text-gray-400">
+              <div class="text-4xl mb-3">📚</div>
+              <p class="font-medium">No books checked out right now!</p>
+            </div>
+          </div>
+        {% endif %}
+      </div>
+
+      <!-- "My Books" empty state when no assignments -->
+      {% set my_books_count = assignments.values() | select | list | length %}
+      {% if my_books_count == 0 and checkouts %}
+      <div x-show="tab==='my'" class="text-center py-12 text-gray-400 mt-4">
+        <div class="text-4xl mb-3">📖</div>
+        <p class="font-medium">You haven't added any books yet!</p>
+        <p class="text-sm mt-1">Tap a book from All Books to add it to your list.</p>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- History tab content (lazy loaded via HTMX on first intersect) -->
+    <div x-show="tab==='history'"
+         x-cloak
+         hx-get="{{ url_for('child.child_books_history', child_id=child.id) }}"
+         hx-trigger="intersect once"
+         hx-target="this"
+         hx-swap="innerHTML"
+         class="py-4 text-center text-gray-400">
+      Loading history…
+    </div>
+
+  </div>
+</div>
+
+<!-- Book detail modals (one per checkout) -->
+{% for co in checkouts %}
+{% set a = assignments.get(co.id) %}
+{% if a %}
+  {% if a.status == 'reading' %}
+    {% set modal_badge = 'bg-blue-100 text-blue-700' %}
+  {% elif a.status == 'finished' %}
+    {% set modal_badge = 'bg-green-100 text-green-700' %}
+  {% elif a.status == 'approved' %}
+    {% set modal_badge = 'bg-amber-100 text-amber-700' %}
+  {% elif a.status == 'unfinished' %}
+    {% set modal_badge = 'bg-red-100 text-red-600' %}
+  {% else %}
+    {% set modal_badge = 'bg-gray-100 text-gray-500' %}
+  {% endif %}
+{% else %}
+  {% set modal_badge = '' %}
+{% endif %}
+
+<dialog id="modal-{{ co.id }}"
+        class="rounded-2xl shadow-2xl p-0 w-full max-w-sm m-auto border-0 backdrop:bg-black/40">
+  <div class="p-5 space-y-4">
+    <!-- Book info -->
+    <div class="flex gap-4">
+      <img src="/parent/books/{{ co.book.id }}/cover.svg" class="w-24 rounded-xl object-cover shadow shrink-0" alt="{{ co.book.title }}" style="aspect-ratio: 2/3">
+      <div class="flex-1 min-w-0">
+        <div class="font-bold text-gray-800 text-lg leading-tight">{{ co.book.title }}</div>
+        {% if co.book.author %}
+        <div class="text-gray-400 text-sm mt-1">{{ co.book.author }}</div>
+        {% endif %}
+        {% if co.due_date %}
+        <div class="text-xs mt-1 {% if co.is_overdue %}text-red-500 font-semibold{% else %}text-gray-400{% endif %}">
+          {% if co.is_overdue %}Overdue! Due {% else %}Due {% endif %}{{ co.due_date.strftime('%b') }} {{ co.due_date.day }}
+        </div>
+        {% endif %}
+        {% if a %}
+        <span class="inline-block mt-2 text-xs px-2 py-0.5 rounded-full font-semibold {{ modal_badge }}">{{ a.status | capitalize }}</span>
+        {% if a.reward_value > 0 %}
+        <div class="text-emerald-600 font-bold mt-1">${{ "%.2f"|format(a.reward_value) }}</div>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Action button based on assignment state -->
+    {% if not a %}
+    <form method="POST" action="{{ url_for('child.self_assign_book', child_id=child.id, checkout_id=co.id) }}">
+      <button type="submit"
+              class="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2.5 rounded-xl transition-colors active:scale-95">
+        📚 Add to My Reading List
+      </button>
+    </form>
+    {% elif a.status == 'unread' %}
+    <form method="POST" action="{{ url_for('child.start_book', child_id=child.id, assignment_id=a.id) }}">
+      <button type="submit"
+              class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2.5 rounded-xl transition-colors active:scale-95">
+        📖 I Started It!
+      </button>
+    </form>
+    {% elif a.status == 'reading' %}
+    <form method="POST" action="{{ url_for('child.finish_book', child_id=child.id, assignment_id=a.id) }}">
+      <button type="submit"
+              class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2.5 rounded-xl transition-colors active:scale-95">
+        ✅ I Finished It!
+      </button>
+    </form>
+    {% elif a.status == 'finished' %}
+    <div class="bg-green-50 text-green-700 rounded-xl p-3 text-sm text-center font-medium">
+      ⏳ Waiting for a parent to review!
+    </div>
+    {% elif a.status == 'approved' %}
+    <div class="bg-amber-50 text-amber-700 rounded-xl p-3 text-sm text-center font-medium">
+      🏆 Approved! Your reward has been added.
+    </div>
+    {% elif a.status == 'unfinished' %}
+    <div class="bg-red-50 text-red-600 rounded-xl p-3 text-sm text-center font-medium">
+      Marked as unfinished. Keep trying!
+    </div>
+    {% endif %}
+
+    <button onclick="document.getElementById('modal-{{ co.id }}').close()"
+            class="w-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold py-2 rounded-xl text-sm transition-colors">
+      Close
+    </button>
+  </div>
+</dialog>
+{% endfor %}
+
+{% endblock %}

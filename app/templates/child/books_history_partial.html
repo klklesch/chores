@@ -1,0 +1,48 @@
+{% if assignments %}
+<div class="space-y-3">
+  {% for a in assignments %}
+  <div class="bg-white rounded-2xl shadow-sm p-3 flex items-center gap-3 border border-orange-100">
+    <img src="/parent/books/{{ a.checkout.book.id }}/cover.svg" class="w-10 h-14 rounded object-cover shrink-0" alt="{{ a.checkout.book.title }}">
+    <div class="flex-1 min-w-0">
+      <div class="font-semibold text-gray-800 truncate text-sm">{{ a.checkout.book.title }}</div>
+      {% if a.checkout.book.author %}
+      <div class="text-gray-400 text-xs truncate">{{ a.checkout.book.author }}</div>
+      {% endif %}
+      <div class="flex items-center gap-2 mt-1">
+        {% if a.status == 'reading' %}
+          {% set badge_class = 'bg-blue-100 text-blue-700' %}
+        {% elif a.status == 'finished' %}
+          {% set badge_class = 'bg-green-100 text-green-700' %}
+        {% elif a.status == 'approved' %}
+          {% set badge_class = 'bg-amber-100 text-amber-700' %}
+        {% elif a.status == 'unfinished' %}
+          {% set badge_class = 'bg-red-100 text-red-600' %}
+        {% else %}
+          {% set badge_class = 'bg-gray-100 text-gray-500' %}
+        {% endif %}
+        <span class="text-xs px-2 py-0.5 rounded-full font-semibold {{ badge_class }}">{{ a.status | capitalize }}</span>
+        {% if a.reward_value > 0 %}
+        <span class="text-emerald-600 text-xs font-bold">${{ "%.2f"|format(a.reward_value) }}</span>
+        {% endif %}
+      </div>
+      {% if a.started_date %}
+      <div class="text-gray-300 text-xs mt-0.5">Started {{ a.started_date.strftime('%b') }} {{ a.started_date.day }}</div>
+      {% endif %}
+      {% if a.finished_date %}
+      <div class="text-gray-300 text-xs">Finished {{ a.finished_date.strftime('%b') }} {{ a.finished_date.day }}</div>
+      {% endif %}
+    </div>
+    {% if a.checkout.returned_date %}
+    <div class="text-gray-300 text-xs shrink-0 text-right">
+      Returned<br>{{ a.checkout.returned_date.strftime('%b') }} {{ a.checkout.returned_date.day }}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-8 text-gray-400">
+  <div class="text-3xl mb-2">📖</div>
+  <p class="font-medium">No reading history yet!</p>
+</div>
+{% endif %}

@@ -3,6 +3,7 @@
 
 # Database
 instance/
+*.db
 
 # Child avatar uploads
 instance/avatars/

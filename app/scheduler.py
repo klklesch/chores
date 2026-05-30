@@ -142,7 +142,7 @@ def _save_next_payout(app_settings_module, db_module, cadence, hour, minute, dow
 def process_scheduled_payouts(app):
     """Process approved_pending chore instances — fired by APScheduler at the configured time."""
     with app.app_context():
-        from .models import AssignedChore, ChoreInstance, BalanceTransaction, AppSettings
+        from .models import ChoreInstance, BalanceTransaction, AppSettings
         from . import db
 
         cadence_s = AppSettings.query.get('payout_cadence')

@@ -33,7 +33,7 @@ persistence:
   # Docker Desktop (Windows): translate the path to the project's instance/ subfolder:
   #   C:\Users\you\project\instance  →  /run/desktop/mnt/host/c/Users/you/project/instance
   # Set to "" or remove to use a PVC instead.
-  hostPath: "/run/desktop/mnt/host/c/Users/matth/devl/Chores/instance"
+  hostPath: ""
 
 # Tailscale Ingress (recommended for production):
 #   1. Install the Tailscale operator in your cluster
