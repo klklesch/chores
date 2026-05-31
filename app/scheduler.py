@@ -1,10 +1,21 @@
 import logging
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from apscheduler.schedulers.background import BackgroundScheduler
 
 logger = logging.getLogger(__name__)
 _scheduler = BackgroundScheduler()
 _app = None  # stored at init so reschedule_payout_job() needs no argument
+
+
+def _get_timezone():
+    """Return the configured ZoneInfo, falling back to UTC on any error."""
+    try:
+        from .models import AppSettings
+        s = AppSettings.query.get('app_timezone')
+        return ZoneInfo(s.value if s else 'UTC')
+    except Exception:
+        return ZoneInfo('UTC')
 
 
 def get_period(cadence: str, today: date) -> str | None:
@@ -23,7 +34,8 @@ def assign_recurring_chores(app):
         from .models import AssignedChore, ChoreInstance
         from . import db
 
-        today = date.today()
+        tz = _get_timezone()
+        today = datetime.now(tz).date()
 
         # Iterate active recurring configs (one per child+chore combo)
         configs = (
@@ -87,9 +99,10 @@ def assign_recurring_chores(app):
         db.session.commit()
 
 
-def _compute_next_payout(cadence, hour, minute, dow=0, dom=1) -> datetime:
-    """Return the next future datetime when a payout should fire."""
-    now = datetime.now()
+def _compute_next_payout(cadence, hour, minute, dow=0, dom=1, tz=None) -> datetime:
+    """Return the next future naive datetime (in the configured timezone) when a payout should fire."""
+    _tz = tz or ZoneInfo('UTC')
+    now = datetime.now(_tz).replace(tzinfo=None)
     today = now.date()
 
     if cadence == 'daily':
@@ -126,11 +139,11 @@ def _compute_next_payout(cadence, hour, minute, dow=0, dom=1) -> datetime:
     raise ValueError(f'Unknown cadence: {cadence}')
 
 
-def _save_next_payout(app_settings_module, db_module, cadence, hour, minute, dow=0, dom=1):
+def _save_next_payout(app_settings_module, db_module, cadence, hour, minute, dow=0, dom=1, tz=None):
     """Compute and persist next_payout_at in AppSettings."""
     AppSettings = app_settings_module
     db = db_module
-    nxt = _compute_next_payout(cadence, hour, minute, dow, dom)
+    nxt = _compute_next_payout(cadence, hour, minute, dow, dom, tz=tz)
     setting = AppSettings.query.get('next_payout_at')
     if setting:
         setting.value = nxt.isoformat()
@@ -168,11 +181,12 @@ def process_scheduled_payouts(app):
             ))
 
         # Advance next_payout_at
+        tz = _get_timezone()
         time_s = AppSettings.query.get('payout_time')
         hour, minute = (int(p) for p in (time_s.value if time_s else '18:00').split(':'))
         dow = int(AppSettings.query.get('payout_day_of_week').value) if AppSettings.query.get('payout_day_of_week') else 0
         dom = int(AppSettings.query.get('payout_day_of_month').value) if AppSettings.query.get('payout_day_of_month') else 1
-        nxt = _save_next_payout(AppSettings, db, cadence, hour, minute, dow, dom)
+        nxt = _save_next_payout(AppSettings, db, cadence, hour, minute, dow, dom, tz=tz)
 
         db.session.commit()
         if pending:
@@ -182,12 +196,26 @@ def process_scheduled_payouts(app):
 
 
 def reschedule_payout_job():
-    """Read payout settings and rebuild the APScheduler cron job to match."""
+    """Read payout settings and rebuild the APScheduler cron jobs to match."""
     if _app is None:
         return
 
     with _app.app_context():
         from .models import AppSettings
+        from . import db
+
+        tz = _get_timezone()
+
+        # Re-add recurring chores job with updated timezone
+        _scheduler.add_job(
+            assign_recurring_chores,
+            trigger='cron',
+            hour=0, minute=1,
+            args=[_app],
+            id='recurring_chores',
+            replace_existing=True,
+            timezone=tz,
+        )
 
         cadence_s = AppSettings.query.get('payout_cadence')
         cadence = cadence_s.value if cadence_s else 'instant'
@@ -218,18 +246,16 @@ def reschedule_payout_job():
             args=[_app],
             id='scheduled_payouts',
             replace_existing=True,
+            timezone=tz,
             **cron_kwargs,
         )
 
-        with _app.app_context():
-            from .models import AppSettings
-            from . import db
-            dow = cron_kwargs.get('day_of_week', 0)
-            dom = cron_kwargs.get('day', 1)
-            nxt = _save_next_payout(AppSettings, db, cadence, hour, minute, dow, dom)
-            db.session.commit()
+        dow = cron_kwargs.get('day_of_week', 0)
+        dom = cron_kwargs.get('day', 1)
+        nxt = _save_next_payout(AppSettings, db, cadence, hour, minute, dow, dom, tz=tz)
+        db.session.commit()
 
-        logger.info('Payout job scheduled: cadence=%s kwargs=%s next=%s', cadence, cron_kwargs, nxt)
+        logger.info('Payout job scheduled: cadence=%s tz=%s kwargs=%s next=%s', cadence, tz, cron_kwargs, nxt)
 
 
 def check_missed_payout(app):
@@ -246,7 +272,8 @@ def check_missed_payout(app):
             return
 
         next_payout = datetime.fromisoformat(next_s.value)
-        now = datetime.now()
+        tz = _get_timezone()
+        now = datetime.now(tz).replace(tzinfo=None)
 
         if now >= next_payout:
             logger.info('Startup: payout was due at %s — processing now.', next_payout)
@@ -259,6 +286,9 @@ def init_scheduler(app):
     global _app
     _app = app
 
+    with app.app_context():
+        tz = _get_timezone()
+
     _scheduler.add_job(
         assign_recurring_chores,
         trigger='cron',
@@ -266,6 +296,7 @@ def init_scheduler(app):
         args=[app],
         id='recurring_chores',
         replace_existing=True,
+        timezone=tz,
     )
 
     if not _scheduler.running:

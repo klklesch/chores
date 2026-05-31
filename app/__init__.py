@@ -272,6 +272,8 @@ def _seed_defaults():
         db.session.add(AppSettings(key='app_base_url', value=''))
     if not AppSettings.query.get('book_default_loan_days'):
         db.session.add(AppSettings(key='book_default_loan_days', value='28'))
+    if not AppSettings.query.get('app_timezone'):
+        db.session.add(AppSettings(key='app_timezone', value='UTC'))
 
     if Chore.query.count() == 0:
         defaults = [

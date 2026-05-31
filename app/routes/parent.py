@@ -1168,6 +1168,7 @@ def settings():
         app_base_url=_get('app_base_url', ''),
         book_default_loan_days=_get('book_default_loan_days', '28'),
         google_books_api_key_set=bool(_get('google_books_api_key', '')),
+        app_timezone=_get('app_timezone', 'UTC'),
     )
 
 
@@ -1243,6 +1244,16 @@ def update_settings():
     google_key = request.form.get('google_books_api_key', '').strip()
     if google_key:
         _set('google_books_api_key', google_key)
+
+    tz_val = request.form.get('app_timezone', '').strip()
+    if tz_val:
+        try:
+            import zoneinfo
+            zoneinfo.ZoneInfo(tz_val)
+            _set('app_timezone', tz_val)
+        except (KeyError, zoneinfo.ZoneInfoNotFoundError):
+            flash('Invalid timezone selected.', 'error')
+            return redirect(url_for('parent.settings'))
 
     db.session.commit()
 
