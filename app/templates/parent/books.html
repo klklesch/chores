@@ -26,15 +26,23 @@
   <div x-show="addOpen" x-cloak class="bg-indigo-50 rounded-2xl p-4 mb-4 border border-indigo-100">
     <h3 class="font-semibold text-indigo-800 mb-3">Check Out a Book</h3>
 
-    <!-- Search input + scan button -->
+    <!-- Search input + search button + scan button -->
     <div class="flex gap-2 mb-2">
       <input id="book-search-input" type="text" name="q" autocomplete="off"
              placeholder="Search by title, author, or ISBN…"
              hx-get="{{ url_for('parent.search_books_external') }}"
-             hx-trigger="input delay:400ms"
+             hx-trigger="keyup[key=='Enter']"
              hx-target="#book-search-results"
              hx-swap="innerHTML"
              class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white">
+      <button id="book-search-btn" type="button"
+              hx-get="{{ url_for('parent.search_books_external') }}"
+              hx-include="#book-search-input"
+              hx-target="#book-search-results"
+              hx-swap="innerHTML"
+              class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors">
+        Search
+      </button>
       <button id="scan-btn" type="button" onclick="toggleScan()"
               class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-xl text-sm transition-colors"
               title="Scan barcode">📷</button>
@@ -577,7 +585,7 @@ window.clearBookSelection = function () {
           var input = document.getElementById('book-search-input');
           input.value = result.getText();
           stopScan();
-          input.dispatchEvent(new Event('input'));
+          document.getElementById('book-search-btn').click();
         }
       }
     );

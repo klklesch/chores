@@ -1,6 +1,6 @@
 image:
   repository: chores
-  tag: "1.1.0"
+  tag: "1.1.1"
   pullPolicy: IfNotPresent
 
 # Must stay at 1 — SQLite does not support concurrent writers
