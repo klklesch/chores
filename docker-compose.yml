@@ -1,0 +1,17 @@
+name: chores
+services:
+  chores:
+    build: .
+    image: chores:local
+    container_name: chores
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: sqlite:////app/instance/chores.db
+    ports:
+      - "127.0.0.1:5139:8000"   # localhost only; put a reverse proxy in front for external access
+    volumes:
+      - chores-data:/app/instance   # SQLite DB + avatars
+
+volumes:
+  chores-data:
